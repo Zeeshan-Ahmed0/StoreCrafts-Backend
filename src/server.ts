@@ -1,9 +1,5 @@
 import express from "express";
-import bookingRouter from "./Routes/bookingRoute.ts";
 import { sequelize } from "./Config/dbConfig.ts";
-import { db } from "./Models/index.ts";
-import employeeRouter from "./Routes/employeeRoute.ts";
-import userRouter from "./Routes/userRoute.ts";
 
 const app = express();
 
