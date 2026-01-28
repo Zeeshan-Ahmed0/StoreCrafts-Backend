@@ -1,15 +1,21 @@
-import express from "express";
-import { sequelize } from "./Config/dbConfig.ts";
+import { app } from "./app.js";
+import { sequelize } from "./config/dbConfig.js";
+import { env } from "./config/env.js";
+import { initModels } from "./models/index.js";
 
-const app = express();
+const startServer = async () => {
+  try {
+    initModels(sequelize);
+    if (env.nodeEnv !== "production") {
+      await sequelize.sync({ alter: true });
+    }
+    app.listen(env.port, () => {
+      console.log(`Server is running on PORT ${env.port}`);
+    });
+  } catch (error) {
+    console.error("Failed to start server:", error);
+    process.exit(1);
+  }
+};
 
-app.use(express.json());
-
-app.get("/api", (req: any, res: any) => res.send("API is running"));
-
-app.listen(4000, () =>
-  sequelize
-    .sync({ alter: true })
-    .then(() => console.log("Server is running on PORT 4000"))
-    .catch((err: any) => console.log(err)),
-);
+startServer();

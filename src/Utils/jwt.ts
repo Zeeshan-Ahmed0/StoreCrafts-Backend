@@ -7,8 +7,8 @@ type JwtPayload = {
   storeId: string | null;
 };
 
-const verifyToken = (token: string) => {
-  return jwt.verify(token, env.jwtSecret) as JwtPayload;
+const signAdminToken = (payload: JwtPayload) => {
+  return jwt.sign(payload, env.jwtSecret, { expiresIn: "7d" });
 };
 
-export { verifyToken };
+export { signAdminToken };
