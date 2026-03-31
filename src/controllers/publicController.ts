@@ -1,5 +1,5 @@
 import type { Request, Response } from "express";
-import { Order, OrderItem, Product, Variant } from "../models/index.js";
+import { Order, OrderItem, Product, Store, Variant } from "../models/index.js";
 import { sendError, sendSuccess } from "../utils/response.js";
 import { applyStoreScope } from "../utils/storeScope.js";
 import { requireFields } from "../utils/validation.js";
@@ -70,4 +70,22 @@ const createOrder = async (req: Request, res: Response) => {
   return sendSuccess(res, { id: order.id }, "Order placed", 201);
 };
 
-export { createOrder, listProductVariants, listStoreProducts };
+const getStoreBySlug = async (req: Request, res: Response) => {
+  const { slug } = req.params;
+  if (!slug) {
+    return sendError(res, "Slug is required", 400);
+  }
+
+  const store = await Store.findOne({
+    where: { slug: String(slug) },
+    attributes: ["id", "slug", "name", "subTitle", "description", "logo", "theme"],
+  });
+
+  if (!store) {
+    return sendError(res, "Store not found", 404);
+  }
+
+  return sendSuccess(res, store, "Store details");
+};
+
+export { createOrder, getStoreBySlug, listProductVariants, listStoreProducts };

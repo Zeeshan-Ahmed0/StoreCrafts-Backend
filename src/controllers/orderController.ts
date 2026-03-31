@@ -4,10 +4,13 @@ import { Order, OrderItem } from "../models/index.js";
 import { sendError, sendSuccess } from "../utils/response.js";
 import { applyStoreScope } from "../utils/storeScope.js";
 import { requireFields } from "../utils/validation.js";
+import { getPaginationParams, formatPaginatedResponse } from "../utils/pagination.js";
 import { sequelize } from "../config/dbConfig.js";
 
 const listOrders = async (req: Request, res: Response) => {
-  const { status, storeId, userId, sort } = req.query;
+  const { status, storeId, userId, sort, limit, offset } = req.query;
+  const pagination = getPaginationParams(limit, offset);
+
   const where: Record<string, unknown> = {};
 
   if (req.auth?.role === "store_admin") {
@@ -36,15 +39,22 @@ const listOrders = async (req: Request, res: Response) => {
       ? [["createdAt", "ASC"]]
       : [["createdAt", "DESC"]];
 
-  const orders = await Order.findAll({
+  const { rows, count } = await Order.findAndCountAll({
     where,
     attributes: {
       include: [[totalValueExpr, "totalValue"]],
+      exclude: [], // Include all base attributes by default
     },
     order: orderClause,
+    limit: pagination.limit,
+    offset: pagination.offset,
   });
 
-  return sendSuccess(res, orders, "Orders");
+  return sendSuccess(
+    res,
+    formatPaginatedResponse(rows, count, pagination),
+    "Orders"
+  );
 };
 
 const getOrderDetail = async (req: Request, res: Response) => {
@@ -60,7 +70,37 @@ const getOrderDetail = async (req: Request, res: Response) => {
 
   const order = await Order.findOne({
     where,
-    include: [{ model: OrderItem, as: "items" }],
+    attributes: [
+      "id",
+      "storeId",
+      "userId",
+      "name",
+      "phone",
+      "email",
+      "address",
+      "status",
+      "paymentMethod",
+      "totalQuantity",
+      "totalPrice",
+      "createdAt",
+      "updatedAt",
+    ],
+    include: [
+      {
+        model: OrderItem,
+        as: "items",
+        attributes: [
+          "id",
+          "orderId",
+          "productId",
+          "variantId",
+          "quantity",
+          "price",
+          "productName",
+          "variantName",
+        ],
+      },
+    ],
   });
 
   if (!order) {

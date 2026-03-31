@@ -10,6 +10,7 @@ import {
 class Store extends Model<InferAttributes<Store>, InferCreationAttributes<Store>> {
   declare id: CreationOptional<string>;
   declare name: string;
+  declare slug: string;
   declare subTitle: string;
   declare description: string;
   declare logo: CreationOptional<string | null>;
@@ -29,6 +30,11 @@ const initStoreModel = (sequelize: Sequelize) => {
       name: {
         type: DataTypes.STRING(200),
         allowNull: false,
+      },
+      slug: {
+        type: DataTypes.STRING(240),
+        allowNull: false,
+        unique: true, // Store slugs must be globally unique
       },
       logo: {
         type: DataTypes.STRING(200),

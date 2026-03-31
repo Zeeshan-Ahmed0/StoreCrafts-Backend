@@ -3,6 +3,7 @@ import { Category } from "../models/index.js";
 import { sendError, sendSuccess } from "../utils/response.js";
 import { applyStoreScope } from "../utils/storeScope.js";
 import { requireFields } from "../utils/validation.js";
+import { getPaginationParams, formatPaginatedResponse } from "../utils/pagination.js";
 
 const listCategories = async (req: Request, res: Response) => {
   const storeId = req.storeId ?? String(req.query.storeId ?? "");
@@ -10,11 +11,30 @@ const listCategories = async (req: Request, res: Response) => {
     return sendError(res, "storeId is required", 400);
   }
 
-  const categories = await Category.findAll({
+  const { limit, offset } = req.query;
+  const pagination = getPaginationParams(limit, offset);
+
+  const { rows, count } = await Category.findAndCountAll({
     where: applyStoreScope(storeId, {}),
+    attributes: [
+      "id",
+      "storeId",
+      "name",
+      "image",
+      "subtitle",
+      "description",
+      "createdAt",
+    ],
     order: [["id", "ASC"]],
+    limit: pagination.limit,
+    offset: pagination.offset,
   });
-  return sendSuccess(res, categories, "Categories");
+
+  return sendSuccess(
+    res,
+    formatPaginatedResponse(rows, count, pagination),
+    "Categories"
+  );
 };
 
 const createCategory = async (req: Request, res: Response) => {

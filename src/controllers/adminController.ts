@@ -3,6 +3,7 @@ import { Admin, Order, Store, User } from "../models/index.js";
 import { sendError, sendSuccess } from "../utils/response.js";
 import { isEmail, requireFields } from "../utils/validation.js";
 import { hashPassword } from "../utils/password.js";
+import { generateSlug, ensureUniqueSlug } from "../utils/slug.js";
 import { sequelize } from "../config/dbConfig.js";
 
 const getDashboardAnalytics = async (req: Request, res: Response) => {
@@ -136,8 +137,12 @@ const createStore = async (req: Request, res: Response) => {
     return sendError(res, `Missing fields: ${missing.join(", ")}`, 400);
   }
 
+  // Generate slug from store name
+  const slug = generateSlug(String(req.body.name));
+
   const store = await Store.create({
     name: String(req.body.name),
+    slug: slug,
     subTitle: String(req.body.subTitle),
     description: String(req.body.description),
     logo: req.body.logo ? String(req.body.logo) : null,
@@ -167,7 +172,11 @@ const updateStore = async (req: Request, res: Response) => {
   }
 
   const updates: Record<string, unknown> = {};
-  if (req.body.name) updates.name = String(req.body.name);
+  if (req.body.name) {
+    updates.name = String(req.body.name);
+    // Regenerate slug if store name changes
+    updates.slug = generateSlug(String(req.body.name));
+  }
   if (req.body.subTitle) updates.subTitle = String(req.body.subTitle);
   if (req.body.description) updates.description = String(req.body.description);
   if (req.body.logo !== undefined) {

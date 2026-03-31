@@ -4,6 +4,8 @@ import { Product, Review, Variant } from "../models/index.js";
 import { sendError, sendSuccess } from "../utils/response.js";
 import { applyStoreScope } from "../utils/storeScope.js";
 import { requireFields } from "../utils/validation.js";
+import { generateSlug, ensureUniqueSlug } from "../utils/slug.js";
+import { getPaginationParams, formatPaginatedResponse } from "../utils/pagination.js";
 import { sequelize } from "../config/dbConfig.js";
 
 const buildPriceExpression = () => {
@@ -21,58 +23,88 @@ const buildComparePriceExpression = () => {
 };
 
 const listProducts = async (req: Request, res: Response) => {
-  const { categoryId, minPrice, maxPrice, search } = req.query;
-  const storeId = req.storeId ?? String(req.query.storeId ?? "");
-  if (!storeId) {
-    return sendError(res, "storeId is required", 400);
-  }
-  const where = applyStoreScope(storeId, {}) as Record<string | symbol, unknown>;
+  try {
+    const { categoryId, minPrice, maxPrice, search, limit, offset } = req.query;
+    const storeId = req.storeId ?? String(req.query.storeId ?? "");
+    if (!storeId) {
+      return sendError(res, "storeId is required", 400);
+    }
 
-  if (categoryId) {
-    where.categoryId = Number(categoryId);
-  }
-  if (search) {
-    where.name = { [Op.iLike]: `%${String(search)}%` };
-  }
+    const pagination = getPaginationParams(limit, offset);
 
-  const priceClauses = [];
-  const priceExpr = buildPriceExpression();
+    const where = applyStoreScope(storeId, {}) as Record<string | symbol, unknown>;
 
-  if (minPrice !== undefined) {
-    priceClauses.push(Sequelize.where(priceExpr, { [Op.gte]: Number(minPrice) }));
+    if (categoryId) {
+      where.categoryId = Number(categoryId);
+    }
+    if (search) {
+      where.name = { [Op.iLike]: `%${String(search)}%` };
+    }
+
+    const priceClauses = [];
+    const priceExpr = buildPriceExpression();
+
+    if (minPrice !== undefined) {
+      priceClauses.push(Sequelize.where(priceExpr, { [Op.gte]: Number(minPrice) }));
+    }
+    if (maxPrice !== undefined) {
+      priceClauses.push(Sequelize.where(priceExpr, { [Op.lte]: Number(maxPrice) }));
+    }
+    if (priceClauses.length) {
+      (where as Record<symbol, unknown>)[Op.and] = priceClauses;
+    }
+
+    const { rows, count } = await Product.findAndCountAll({
+      where,
+      attributes: [
+        "id",
+        "storeId",
+        "categoryId",
+        "name",
+        "slug",
+        "price",
+        "comparePrice",
+        "primaryImage",
+        "isActive",
+        "inStock",
+        "createdAt",
+      ],
+      include: [
+        {
+          model: Variant,
+          as: "variants",
+          attributes: ["id", "price", "comparePrice", "default"],
+        },
+      ],
+      order: [["id", "ASC"]],
+      limit: pagination.limit,
+      offset: pagination.offset,
+    });
+
+    const response = rows.map((product) => {
+      const variants = ((product as Product & { variants?: Variant[] }).variants ??
+        []) as Variant[];
+      const defaultVariant =
+        variants.find((variant) => variant.default) ?? variants[0] ?? null;
+      return {
+        ...product.toJSON(),
+        displayPrice: defaultVariant?.price ?? product.price,
+        displayComparePrice: defaultVariant?.comparePrice ?? product.comparePrice,
+      };
+    });
+
+    return sendSuccess(
+      res,
+      formatPaginatedResponse(response, count, pagination),
+      "Products"
+    );
+  } catch (error) {
+    return sendError(
+      res,
+      `Failed to list products: ${error instanceof Error ? error.message : "Unknown error"}`,
+      500
+    );
   }
-  if (maxPrice !== undefined) {
-    priceClauses.push(Sequelize.where(priceExpr, { [Op.lte]: Number(maxPrice) }));
-  }
-  if (priceClauses.length) {
-    (where as Record<symbol, unknown>)[Op.and] = priceClauses;
-  }
-
-  const products = await Product.findAll({
-    where,
-    include: [
-      {
-        model: Variant,
-        as: "variants",
-        attributes: ["id", "price", "comparePrice"],
-      },
-    ],
-    order: [["id", "ASC"]],
-  });
-
-  const response = products.map((product) => {
-    const variants = ((product as Product & { variants?: Variant[] }).variants ??
-      []) as Variant[];
-    const defaultVariant =
-      variants.find((variant) => variant.default) ?? variants[0] ?? null;
-    return {
-      ...product.toJSON(),
-      displayPrice: defaultVariant?.price ?? product.price,
-      displayComparePrice: defaultVariant?.comparePrice ?? product.comparePrice,
-    };
-  });
-
-  return sendSuccess(res, response, "Products");
 };
 
 const getProductDetail = async (req: Request, res: Response) => {
@@ -88,9 +120,53 @@ const getProductDetail = async (req: Request, res: Response) => {
 
   const product = await Product.findOne({
     where: applyStoreScope(storeId, { id: productId }),
+    attributes: [
+      "id",
+      "storeId",
+      "categoryId",
+      "name",
+      "slug",
+      "description",
+      "tag",
+      "price",
+      "comparePrice",
+      "primaryImage",
+      "secondaryImage",
+      "isActive",
+      "inStock",
+      "createdAt",
+      "updatedAt",
+    ],
     include: [
-      { model: Variant, as: "variants" },
-      { model: Review, as: "reviews" },
+      {
+        model: Variant,
+        as: "variants",
+        attributes: [
+          "id",
+          "productId",
+          "name",
+          "value",
+          "price",
+          "comparePrice",
+          "image",
+          "default",
+          "isActive",
+        ],
+      },
+      {
+        model: Review,
+        as: "reviews",
+        attributes: [
+          "id",
+          "productId",
+          "userId",
+          "rating",
+          "comment",
+          "image",
+          "isApproved",
+          "createdAt",
+        ],
+      },
     ],
   });
 
@@ -107,10 +183,20 @@ const createProduct = async (req: Request, res: Response) => {
     return sendError(res, `Missing fields: ${missing.join(", ")}`, 400);
   }
 
+  // Generate slug from product name
+  const baseSlug = generateSlug(String(req.body.name));
+  const existingProducts = await Product.findAll({
+    where: applyStoreScope(req.storeId!, {}),
+    attributes: ["slug"],
+  });
+  const existingSlugs = existingProducts.map((p) => p.slug);
+  const slug = ensureUniqueSlug(baseSlug, existingSlugs);
+
   const payload = {
     storeId: req.storeId!,
     categoryId: req.body.categoryId ? Number(req.body.categoryId) : null,
     name: String(req.body.name),
+    slug,
     description: req.body.description ? String(req.body.description) : null,
     tag: req.body.tag ? String(req.body.tag) : null,
     primaryImage: req.body.primaryImage ? String(req.body.primaryImage) : null,
@@ -160,7 +246,17 @@ const updateProduct = async (req: Request, res: Response) => {
   if (req.body.categoryId !== undefined) {
     updates.categoryId = req.body.categoryId ? Number(req.body.categoryId) : null;
   }
-  if (req.body.name) updates.name = String(req.body.name);
+  if (req.body.name) {
+    updates.name = String(req.body.name);
+    // Regenerate slug if name changes
+    const baseSlug = generateSlug(String(req.body.name));
+    const otherProducts = await Product.findAll({
+      where: applyStoreScope(req.storeId!, { id: { [Op.ne]: productId } }),
+      attributes: ["slug"],
+    });
+    const otherSlugs = otherProducts.map((p) => p.slug);
+    updates.slug = ensureUniqueSlug(baseSlug, otherSlugs);
+  }
   if (req.body.description !== undefined) {
     updates.description = req.body.description ? String(req.body.description) : null;
   }

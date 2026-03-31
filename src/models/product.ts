@@ -15,6 +15,7 @@ class Product extends Model<
   declare storeId: string;
   declare categoryId: number | null;
   declare name: string;
+  declare slug: string;
   declare description: string | null;
   declare tag: string | null;
   declare primaryImage: string | null;
@@ -46,6 +47,11 @@ const initProductModel = (sequelize: Sequelize) => {
       name: {
         type: DataTypes.STRING(200),
         allowNull: false,
+      },
+      slug: {
+        type: DataTypes.STRING(240),
+        allowNull: false,
+        unique: false, // Uniqueness enforced via composite index (store_id, slug)
       },
       description: {
         type: DataTypes.TEXT,

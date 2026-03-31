@@ -4,9 +4,12 @@ import { Coupon } from "../models/index.js";
 import { sendError, sendSuccess } from "../utils/response.js";
 import { applyStoreScope } from "../utils/storeScope.js";
 import { requireFields } from "../utils/validation.js";
+import { getPaginationParams, formatPaginatedResponse } from "../utils/pagination.js";
 
 const listCoupons = async (req: Request, res: Response) => {
-  const { active, expired, sort } = req.query;
+  const { active, expired, sort, limit, offset } = req.query;
+  const pagination = getPaginationParams(limit, offset);
+
   const where: Record<string | symbol, unknown> = applyStoreScope(
     req.storeId!,
     {}
@@ -31,12 +34,36 @@ const listCoupons = async (req: Request, res: Response) => {
   const orderBy: Array<[string, "ASC" | "DESC"]> =
     sort === "discount" ? [["value", "DESC"]] : [["id", "DESC"]];
 
-  const coupons = await Coupon.findAll({ where, order: orderBy });
-  return sendSuccess(res, coupons, "Coupons");
+  const { rows, count } = await Coupon.findAndCountAll({
+    where,
+    attributes: [
+      "id",
+      "storeId",
+      "code",
+      "value",
+      "isPercentage",
+      "startsAt",
+      "endsAt",
+      "isActive",
+      "createdAt",
+    ],
+    order: orderBy,
+    limit: pagination.limit,
+    offset: pagination.offset,
+  });
+
+  return sendSuccess(
+    res,
+    formatPaginatedResponse(rows, count, pagination),
+    "Coupons"
+  );
 };
 
 const listPublicCoupons = async (req: Request, res: Response) => {
   const storeId = String(req.params.storeId);
+  const { limit, offset } = req.query;
+  const pagination = getPaginationParams(limit, offset);
+
   const where: Record<string | symbol, unknown> = applyStoreScope(storeId, {
     isActive: true,
   }) as Record<string | symbol, unknown>;
@@ -45,8 +72,27 @@ const listPublicCoupons = async (req: Request, res: Response) => {
   where[Op.or] = [{ startsAt: null }, { startsAt: { [Op.lte]: now } }];
   where[Op.and] = [{ endsAt: null }, { endsAt: { [Op.gte]: now } }];
 
-  const coupons = await Coupon.findAll({ where, order: [["id", "DESC"]] });
-  return sendSuccess(res, coupons, "Coupons");
+  const { rows, count } = await Coupon.findAndCountAll({
+    where,
+    attributes: [
+      "id",
+      "storeId",
+      "code",
+      "value",
+      "isPercentage",
+      "startsAt",
+      "endsAt",
+    ],
+    order: [["id", "DESC"]],
+    limit: pagination.limit,
+    offset: pagination.offset,
+  });
+
+  return sendSuccess(
+    res,
+    formatPaginatedResponse(rows, count, pagination),
+    "Coupons"
+  );
 };
 
 const createCoupon = async (req: Request, res: Response) => {

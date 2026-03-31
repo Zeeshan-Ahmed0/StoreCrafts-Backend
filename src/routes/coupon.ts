@@ -8,6 +8,7 @@ import {
   validateCoupon,
 } from "../controllers/couponController.js";
 import { authenticateJwt, requireRole, requireStoreScope } from "../middleware/auth.js";
+import { resolveStoreSlug } from "../middleware/storeResolver.js";
 
 const couponRouter = Router();
 
@@ -16,6 +17,7 @@ couponRouter.post("/public/:storeId/validate", validateCoupon);
 
 couponRouter.get(
   "/",
+  resolveStoreSlug,
   authenticateJwt,
   requireRole("store_owner"),
   requireStoreScope,

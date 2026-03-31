@@ -4,9 +4,11 @@ import { Order, OrderItem, Review } from "../models/index.js";
 import { sendError, sendSuccess } from "../utils/response.js";
 import { applyStoreScope } from "../utils/storeScope.js";
 import { requireFields } from "../utils/validation.js";
+import { getPaginationParams, formatPaginatedResponse } from "../utils/pagination.js";
 
 const listReviews = async (req: Request, res: Response) => {
-  const { storeId, rating, withImage, sort } = req.query;
+  const { storeId, rating, withImage, sort, limit, offset } = req.query;
+  const pagination = getPaginationParams(limit, offset);
 
   const scopedStoreId =
     req.auth?.role === "store_admin" ? req.storeId : storeId?.toString();
@@ -32,8 +34,29 @@ const listReviews = async (req: Request, res: Response) => {
   const orderBy: Array<[string, "ASC" | "DESC"]> =
     sort === "rating" ? [["rating", "DESC"]] : [["createdAt", "DESC"]];
 
-  const reviews = await Review.findAll({ where, order: orderBy });
-  return sendSuccess(res, reviews, "Reviews");
+  const { rows, count } = await Review.findAndCountAll({
+    where,
+    attributes: [
+      "id",
+      "storeId",
+      "productId",
+      "userId",
+      "rating",
+      "comment",
+      "image",
+      "isApproved",
+      "createdAt",
+    ],
+    order: orderBy,
+    limit: pagination.limit,
+    offset: pagination.offset,
+  });
+
+  return sendSuccess(
+    res,
+    formatPaginatedResponse(rows, count, pagination),
+    "Reviews"
+  );
 };
 
 const createReview = async (req: Request, res: Response) => {

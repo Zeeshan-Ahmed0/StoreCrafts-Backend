@@ -33,7 +33,7 @@ const initAdminModel = (sequelize: Sequelize) => {
       email: {
         type: DataTypes.STRING(180),
         allowNull: false,
-        unique: true,
+        unique: false, // Uniqueness enforced via composite index (store_id, email)
       },
       password: {
         type: DataTypes.STRING(255),
@@ -64,6 +64,12 @@ const initAdminModel = (sequelize: Sequelize) => {
       sequelize,
       tableName: "admins",
       underscored: true,
+      indexes: [
+        {
+          unique: true,
+          fields: ["store_id", "email"],
+        },
+      ],
     }
   );
 
